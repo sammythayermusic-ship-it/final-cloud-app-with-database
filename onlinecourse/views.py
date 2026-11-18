@@ -1,3 +1,4 @@
+from .models import Question, Choice, Submission
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 # <HINT> Import any new Models here
@@ -134,3 +135,43 @@ def enroll(request, course_id):
 
 
 
+
+
+
+def extract_answers(request):
+    submitted_answers = []
+    for key in request.POST:
+        if key.startswith('choice'):
+            value = request.POST[key]
+            choice_id = int(value)
+            submitted_answers.append(choice_id)
+    return submitted_answers
+
+
+def submit(request, course_id):
+    course = get_object_or_404(Course, pk=course_id)
+    user = request.user
+    enrollment = Enrollment.objects.get(user=user, course=course)
+    submission = Submission.objects.create(enrollment=enrollment)
+    selected_ids = extract_answers(request)
+    submission.choices.set(selected_ids)
+    return HttpResponseRedirect(reverse(viewname='onlinecourse:exam_result', args=(course.id, submission.id)))
+
+
+def show_exam_result(request, course_id, submission_id):
+    context = {}
+    course = get_object_or_404(Course, pk=course_id)
+    submission = Submission.objects.get(id=submission_id)
+    selected_ids = submission.choices.values_list('id', flat=True)
+    total_score = 0
+    max_score = 0
+    for question in course.question_set.all():
+        max_score += question.grade
+        if question.is_get_score(selected_ids):
+            total_score += question.grade
+    context['course'] = course
+    context['selected_ids'] = selected_ids
+    context['grade'] = int(total_score / max_score * 100) if max_score else 0
+    context['total_score'] = total_score
+    context['max_score'] = max_score
+    return render(request, 'onlinecourse/exam_result_bootstrap.html', context)
